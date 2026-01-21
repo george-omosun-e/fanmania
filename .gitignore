@@ -1,0 +1,270 @@
+# =======================
+# ENVIRONMENT & SECRETS
+# =======================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.crt
+config/firebase-credentials.json
+
+# =======================
+# GO BACKEND
+# =======================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+dist/
+build/
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace file
+go.work
+
+# Dependency directories
+vendor/
+
+# Air (hot reload) tmp directory
+tmp/
+.air/
+
+# =======================
+# FLUTTER/DART
+# =======================
+# Files and directories created by pub
+.dart_tool/
+.packages
+build/
+pubspec.lock  # Include if you want deterministic builds
+
+# Flutter/Dart/Pub related
+**/doc/api/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# Android related
+**/android/**/gradle-wrapper.jar
+**/android/.gradle
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+*.jks
+*.keystore
+
+# iOS/XCode related
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/app.flx
+**/ios/Flutter/app.zip
+**/ios/Flutter/flutter_assets/
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+
+# Coverage
+coverage/
+
+# Symbolication related
+app.*.symbols
+
+# Obfuscation related
+app.*.map.json
+
+# =======================
+# DOCKER
+# =======================
+docker-compose.override.yml
+
+# =======================
+# DATABASE
+# =======================
+*.sql.bak
+*.db
+*.sqlite
+*.sqlite3
+dump.sql
+
+# =======================
+# LOGS
+# =======================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# =======================
+# IDE & EDITORS
+# =======================
+# VSCode
+.vscode/
+*.code-workspace
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Android Studio
+*.iml
+.gradle
+local.properties
+.idea/
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# =======================
+# OS SPECIFIC
+# =======================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =======================
+# TESTING
+# =======================
+.coverage
+htmlcov/
+.tox/
+.pytest_cache/
+.hypothesis/
+
+# =======================
+# DOCUMENTATION
+# =======================
+docs/_build/
+site/
+
+# =======================
+# TEMPORARY FILES
+# =======================
+*.tmp
+*.temp
+*.cache
+.cache/
+
+# =======================
+# BACKUPS
+# =======================
+*.bak
+*.backup
+*~
+
+# =======================
+# NODE (if used for tooling)
+# =======================
+node_modules/
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# =======================
+# PYTHON (if used for scripts)
+# =======================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# =======================
+# DEPLOYMENT
+# =======================
+.fly/
+railway.json
+.vercel
+
+# =======================
+# MISC
+# =======================
+.terraform/
+*.tfstate
+*.tfstate.backup
+backend/main
+mobile_old.zip
+.claude/

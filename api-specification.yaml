@@ -1,0 +1,737 @@
+openapi: 3.0.3
+info:
+  title: Fanmania API
+  description: AI-Powered Fan Skill Competition Platform
+  version: 1.0.0
+  contact:
+    name: Fanmania Team
+    email: dev@fanmania.app
+
+servers:
+  - url: https://api.fanmania.app/v1
+    description: Production
+  - url: http://localhost:8080/v1
+    description: Local Development
+
+tags:
+  - name: Authentication
+    description: User registration, login, token refresh
+  - name: Users
+    description: User profile and stats management
+  - name: Categories
+    description: Fan category browsing and selection
+  - name: Challenges
+    description: Challenge retrieval and submission
+  - name: Leaderboards
+    description: Rankings and leaderboards
+  - name: Notifications
+    description: Push notification management
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid credentials"
+        code:
+          type: string
+          example: "AUTH_001"
+        timestamp:
+          type: string
+          format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          minLength: 3
+          maxLength: 30
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+          maxLength: 50
+        avatar_url:
+          type: string
+          format: uri
+        total_points:
+          type: integer
+          format: int64
+        global_rank:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        last_active:
+          type: string
+          format: date-time
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Afrobeats (2010s)"
+        slug:
+          type: string
+          example: "afrobeats-2010s"
+        description:
+          type: string
+          example: "Test your knowledge of the Afrobeats movement from 2010-2020"
+        icon_type:
+          type: string
+          enum: [cube, triangle, wave, hexagon, sphere]
+        color_primary:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#00F2FF"
+        color_secondary:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#8A2BE2"
+        user_stats:
+          $ref: '#/components/schemas/CategoryUserStats'
+
+    CategoryUserStats:
+      type: object
+      properties:
+        points:
+          type: integer
+          format: int64
+        rank:
+          type: integer
+        mastery_percentage:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 100
+        streak_days:
+          type: integer
+
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        category_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Timeline Challenge: West African Hip-Hop Evolution"
+        description:
+          type: string
+        question_data:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [multiple_choice, timeline, prediction, true_false]
+            question:
+              type: string
+              example: "Which event occurred first in Afrobeats history?"
+            options:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  text:
+                    type: string
+        difficulty_tier:
+          type: integer
+          minimum: 1
+          maximum: 5
+        base_points:
+          type: integer
+        time_limit_seconds:
+          type: integer
+        challenge_type:
+          type: string
+          enum: [knowledge, timeline, prediction, pattern]
+        active_until:
+          type: string
+          format: date-time
+
+    ChallengeAttempt:
+      type: object
+      properties:
+        challenge_id:
+          type: string
+          format: uuid
+        selected_answer:
+          type: string
+        time_taken_seconds:
+          type: integer
+
+    ChallengeResult:
+      type: object
+      properties:
+        is_correct:
+          type: boolean
+        points_earned:
+          type: integer
+        explanation:
+          type: string
+        new_total_points:
+          type: integer
+        new_rank:
+          type: integer
+        streak_updated:
+          type: boolean
+        streak_days:
+          type: integer
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        rank:
+          type: integer
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+        points:
+          type: integer
+          format: int64
+        mastery_percentage:
+          type: number
+          format: float
+
+    Notification:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Your rank is under threat"
+        body:
+          type: string
+          example: "3 users are closing in on your position"
+        notification_type:
+          type: string
+          enum: [rank_threat, challenge_unlock, streak_risk, difficulty_unlock]
+        action_url:
+          type: string
+        is_read:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - email
+                - password
+              properties:
+                username:
+                  type: string
+                  minLength: 3
+                  maxLength: 30
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                display_name:
+                  type: string
+      responses:
+        '201':
+          description: User created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Username or email already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refresh_token
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+        '401':
+          description: Invalid refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me:
+    get:
+      tags:
+        - Users
+      summary: Get current user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /users/me/stats:
+    get:
+      tags:
+        - Users
+      summary: Get user statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_points:
+                    type: integer
+                  global_rank:
+                    type: integer
+                  categories_active:
+                    type: integer
+                  challenges_completed:
+                    type: integer
+                  current_streak:
+                    type: integer
+                  longest_streak:
+                    type: integer
+                  accuracy_rate:
+                    type: number
+                    format: float
+
+  /categories:
+    get:
+      tags:
+        - Categories
+      summary: List all categories
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: is_active
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+
+  /categories/{categoryId}:
+    get:
+      tags:
+        - Categories
+      summary: Get category details
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Category details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /challenges:
+    get:
+      tags:
+        - Challenges
+      summary: Get available challenges
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: category_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: difficulty_tier
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 50
+      responses:
+        '200':
+          description: List of challenges
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challenges:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Challenge'
+                  available_tiers:
+                    type: array
+                    items:
+                      type: integer
+
+  /challenges/{challengeId}/attempt:
+    post:
+      tags:
+        - Challenges
+      summary: Submit challenge attempt
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: challengeId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChallengeAttempt'
+      responses:
+        '200':
+          description: Challenge result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChallengeResult'
+        '400':
+          description: Invalid attempt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /leaderboards/global:
+    get:
+      tags:
+        - Leaderboards
+      summary: Get global leaderboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, all_time]
+            default: weekly
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 500
+      responses:
+        '200':
+          description: Leaderboard entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scope:
+                    type: string
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+                  user_rank:
+                    type: integer
+                  total_users:
+                    type: integer
+
+  /leaderboards/category/{categoryId}:
+    get:
+      tags:
+        - Leaderboards
+      summary: Get category-specific leaderboard
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, all_time]
+            default: weekly
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: Category leaderboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    $ref: '#/components/schemas/Category'
+                  scope:
+                    type: string
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      summary: Get user notifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: List of notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unread_count:
+                    type: integer
+
+  /notifications/{notificationId}/read:
+    post:
+      tags:
+        - Notifications
+      summary: Mark notification as read
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Notification marked as read
+        '404':
+          description: Notification not found
+
+  /notifications/register-device:
+    post:
+      tags:
+        - Notifications
+      summary: Register FCM device token
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fcm_token
+              properties:
+                fcm_token:
+                  type: string
+                device_type:
+                  type: string
+                  enum: [ios, android]
+      responses:
+        '200':
+          description: Device registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
