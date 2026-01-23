@@ -37,6 +37,11 @@ func main() {
 
 	log.Println("✓ Connected to PostgreSQL")
 
+	// Run database migrations
+	if err := db.RunMigrations(context.Background()); err != nil {
+		log.Printf("⚠ Migration warning: %v", err)
+	}
+
 	// Initialize repositories
 	userRepo := postgres.NewUserRepository(db)
 	categoryRepo := postgres.NewCategoryRepository(db)
