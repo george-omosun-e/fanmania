@@ -1,7 +1,6 @@
 class ApiConfig {
-  // Base URL - Update this for production
-  // static const String baseUrl = 'http://localhost:8080';
-  static const String baseUrl = 'http://169.254.38.244:8080';
+  // Base URL - Production
+  static const String baseUrl = 'https://fanmania-production.up.railway.app';
 
   // API version
   static const String apiVersion = 'v1';
