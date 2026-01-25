@@ -4,8 +4,9 @@ import '../models/user.dart';
 
 class AuthProvider with ChangeNotifier {
   final ApiService _apiService;
-  
+
   User? _currentUser;
+  UserStats? _userStats;
   bool _isLoading = false;
   String? _error;
 
@@ -15,6 +16,7 @@ class AuthProvider with ChangeNotifier {
 
   // Getters
   User? get currentUser => _currentUser;
+  UserStats? get userStats => _userStats;
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
   String? get error => _error;
@@ -24,11 +26,21 @@ class AuthProvider with ChangeNotifier {
     if (_apiService.isAuthenticated) {
       try {
         _currentUser = await _apiService.getCurrentUser();
+        await _fetchUserStats();
         notifyListeners();
       } catch (e) {
         // Token might be expired, logout
         await logout();
       }
+    }
+  }
+
+  // Fetch user stats
+  Future<void> _fetchUserStats() async {
+    try {
+      _userStats = await _apiService.getUserStats();
+    } catch (e) {
+      debugPrint('Failed to fetch user stats: $e');
     }
   }
 
@@ -47,6 +59,7 @@ class AuthProvider with ChangeNotifier {
         password: password,
       );
       _currentUser = authResponse.user;
+      await _fetchUserStats();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -75,6 +88,7 @@ class AuthProvider with ChangeNotifier {
         password: password,
       );
       _currentUser = authResponse.user;
+      await _fetchUserStats();
       _isLoading = false;
       notifyListeners();
       return true;
@@ -90,6 +104,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> logout() async {
     await _apiService.logout();
     _currentUser = null;
+    _userStats = null;
     notifyListeners();
   }
 
@@ -97,6 +112,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> refreshUser() async {
     try {
       _currentUser = await _apiService.getCurrentUser();
+      await _fetchUserStats();
       notifyListeners();
     } catch (e) {
       debugPrint('Failed to refresh user: $e');

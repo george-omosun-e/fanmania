@@ -8,6 +8,9 @@ import 'providers/auth_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/challenge_provider.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/register_screen.dart';
+import 'screens/profile/edit_profile_screen.dart';
+import 'screens/notifications/notifications_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'screens/challenge/category_detail_screen.dart';
 import 'screens/challenge/challenge_screen.dart';
@@ -30,6 +33,10 @@ class FanmaniaApp extends StatelessWidget {
             GoRoute(
               path: '/login',
               builder: (context, state) => const LoginScreen(),
+            ),
+            GoRoute(
+              path: '/register',
+              builder: (context, state) => const RegisterScreen(),
             ),
 
             // Main app routes
@@ -65,18 +72,27 @@ class FanmaniaApp extends StatelessWidget {
               path: '/challenge/result',
               builder: (context, state) => const ChallengeResultScreen(),
             ),
+            GoRoute(
+              path: '/profile/edit',
+              builder: (context, state) => const EditProfileScreen(),
+            ),
+            GoRoute(
+              path: '/notifications',
+              builder: (context, state) => const NotificationsScreen(),
+            ),
           ],
           redirect: (context, state) {
             final isAuthenticated = auth.isAuthenticated;
-            final isLoginRoute = state.matchedLocation == '/login';
+            final isAuthRoute = state.matchedLocation == '/login' ||
+                state.matchedLocation == '/register';
 
-            // Redirect to login if not authenticated (except for login page)
-            if (!isAuthenticated && !isLoginRoute) {
+            // Redirect to login if not authenticated (except for auth pages)
+            if (!isAuthenticated && !isAuthRoute) {
               return '/login';
             }
 
-            // Redirect to home if authenticated and on login page
-            if (isAuthenticated && isLoginRoute) {
+            // Redirect to home if authenticated and on auth page
+            if (isAuthenticated && isAuthRoute) {
               return '/home';
             }
 

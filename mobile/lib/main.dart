@@ -4,6 +4,8 @@ import 'services/api_service.dart';
 import 'providers/auth_provider.dart';
 import 'providers/category_provider.dart';
 import 'providers/challenge_provider.dart';
+import 'providers/leaderboard_provider.dart';
+import 'providers/notification_provider.dart';
 import 'app.dart';
 
 void main() async {
@@ -31,6 +33,12 @@ void main() async {
         ),
         ChangeNotifierProvider(
           create: (_) => ChallengeProvider(apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => LeaderboardProvider(apiService),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => NotificationProvider(apiService),
         ),
       ],
       child: const FanmaniaApp(),

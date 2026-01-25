@@ -70,7 +70,7 @@ class ChallengeProvider extends ChangeNotifier {
   }
 
   /// Fetch challenges for the current category and difficulty
-  Future<bool> fetchChallenges({int limit = 5}) async {
+  Future<bool> fetchChallenges({int limit = 10}) async {
     if (_currentCategory == null) {
       _error = 'No category selected';
       notifyListeners();
@@ -149,6 +149,8 @@ class ChallengeProvider extends ChangeNotifier {
   /// Move to next challenge
   bool nextChallenge() {
     if (!hasMoreChallenges) {
+      // Try to fetch more challenges in the background
+      _fetchMoreChallenges();
       return false;
     }
 
@@ -156,7 +158,37 @@ class ChallengeProvider extends ChangeNotifier {
     _lastResult = null;
     _startTimer();
     notifyListeners();
+
+    // Prefetch more challenges if running low
+    if (_challenges.length - _currentChallengeIndex <= 2) {
+      _fetchMoreChallenges();
+    }
+
     return true;
+  }
+
+  /// Fetch more challenges and append to current list
+  Future<void> _fetchMoreChallenges() async {
+    if (_currentCategory == null || _isLoading) return;
+
+    try {
+      final newChallenges = await _apiService.getChallenges(
+        categoryId: _currentCategory!.id,
+        difficultyTier: _selectedDifficulty,
+        limit: 5,
+      );
+
+      // Filter out challenges we already have
+      final existingIds = _challenges.map((c) => c.id).toSet();
+      final uniqueNew = newChallenges.where((c) => !existingIds.contains(c.id)).toList();
+
+      if (uniqueNew.isNotEmpty) {
+        _challenges.addAll(uniqueNew);
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch more challenges: $e');
+    }
   }
 
   /// Handle time expiry (auto-submit with no answer)
@@ -235,10 +267,78 @@ class ChallengeProvider extends ChangeNotifier {
     }
   }
 
-  /// Check if difficulty is unlocked (placeholder - implement based on user stats)
+  /// Check if difficulty is unlocked based on category mastery
+  /// - Tier 1: Always unlocked
+  /// - Tier 2: Requires 60% mastery on Tier 1
+  /// - Tier 3: Requires 60% mastery on Tier 2
+  /// - Tier 4: Requires 70% mastery on Tier 3
+  /// - Tier 5: Requires 80% mastery on Tier 4
   bool isDifficultyUnlocked(int tier) {
-    // For now, all difficulties are unlocked
-    // TODO: Implement based on user's mastery percentage
-    return true;
+    if (tier <= 1) return true;
+
+    final categoryMastery = _currentCategory?.userStats?.masteryPercentage ?? 0;
+
+    // Calculate required mastery based on tier
+    // Using category mastery as a proxy until we have tier-specific data
+    final requiredMastery = getUnlockRequirement(tier);
+    final previousTierMastery = _estimateTierMastery(tier - 1, categoryMastery);
+
+    return previousTierMastery >= requiredMastery;
+  }
+
+  /// Get the mastery percentage required to unlock a tier
+  double getUnlockRequirement(int tier) {
+    switch (tier) {
+      case 2:
+        return 60.0;
+      case 3:
+        return 60.0;
+      case 4:
+        return 70.0;
+      case 5:
+        return 80.0;
+      default:
+        return 0.0;
+    }
+  }
+
+  /// Estimate tier mastery from overall category mastery
+  /// This is a simplified calculation until we have tier-specific data
+  double _estimateTierMastery(int tier, double overallMastery) {
+    // Assume mastery is distributed across tiers
+    // As users progress, earlier tiers should have higher mastery
+    if (tier == 1) {
+      // Tier 1 mastery is typically higher than overall
+      return overallMastery * 1.5;
+    } else if (tier == 2) {
+      return overallMastery * 1.2;
+    } else if (tier == 3) {
+      return overallMastery;
+    } else if (tier == 4) {
+      return overallMastery * 0.8;
+    } else {
+      return overallMastery * 0.6;
+    }
+  }
+
+  /// Get unlock requirement text for a locked tier
+  String getUnlockRequirementText(int tier) {
+    if (tier <= 1) return '';
+
+    final required = getUnlockRequirement(tier);
+    final previousTierName = getDifficultyLabel(tier - 1);
+
+    return 'Complete ${required.toInt()}% of $previousTierName challenges to unlock';
+  }
+
+  /// Get current progress towards unlocking a tier
+  double getUnlockProgress(int tier) {
+    if (tier <= 1) return 1.0;
+
+    final categoryMastery = _currentCategory?.userStats?.masteryPercentage ?? 0;
+    final requiredMastery = getUnlockRequirement(tier);
+    final previousTierMastery = _estimateTierMastery(tier - 1, categoryMastery);
+
+    return (previousTierMastery / requiredMastery).clamp(0.0, 1.0);
   }
 }

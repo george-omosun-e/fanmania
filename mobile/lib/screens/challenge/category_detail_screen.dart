@@ -93,6 +93,8 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                     selectedDifficulty: provider.selectedDifficulty,
                     onSelect: (tier) => provider.setDifficulty(tier),
                     isUnlocked: provider.isDifficultyUnlocked,
+                    getUnlockRequirement: provider.getUnlockRequirementText,
+                    getUnlockProgress: provider.getUnlockProgress,
                   ),
 
                   const SizedBox(height: 32),
@@ -338,11 +340,15 @@ class _DifficultySelector extends StatelessWidget {
   final int selectedDifficulty;
   final ValueChanged<int> onSelect;
   final bool Function(int) isUnlocked;
+  final String Function(int) getUnlockRequirement;
+  final double Function(int) getUnlockProgress;
 
   const _DifficultySelector({
     required this.selectedDifficulty,
     required this.onSelect,
     required this.isUnlocked,
+    required this.getUnlockRequirement,
+    required this.getUnlockProgress,
   });
 
   @override
@@ -357,6 +363,8 @@ class _DifficultySelector extends StatelessWidget {
               isSelected: selectedDifficulty == tier,
               isLocked: !isUnlocked(tier),
               onTap: () => onSelect(tier),
+              unlockRequirement: getUnlockRequirement(tier),
+              unlockProgress: getUnlockProgress(tier),
             ),
           ),
       ],
@@ -369,12 +377,16 @@ class _DifficultyOption extends StatelessWidget {
   final bool isSelected;
   final bool isLocked;
   final VoidCallback onTap;
+  final String? unlockRequirement;
+  final double unlockProgress;
 
   const _DifficultyOption({
     required this.tier,
     required this.isSelected,
     required this.isLocked,
     required this.onTap,
+    this.unlockRequirement,
+    this.unlockProgress = 0.0,
   });
 
   String get _label {
@@ -416,14 +428,18 @@ class _DifficultyOption extends StatelessWidget {
     final tierColor = AppColors.getTierColor(tier);
 
     return GestureDetector(
-      onTap: isLocked ? null : onTap,
+      onTap: isLocked
+          ? () => _showLockedDialog(context)
+          : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isSelected
               ? tierColor.withOpacity(0.15)
-              : AppColors.cardBackground,
+              : isLocked
+                  ? AppColors.cardBackground.withOpacity(0.5)
+                  : AppColors.cardBackground,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? tierColor : AppColors.ghostBorder,
@@ -439,66 +455,171 @@ class _DifficultyOption extends StatelessWidget {
                 ]
               : null,
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Tier indicator
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: tierColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: isLocked
-                    ? Icon(
-                        Icons.lock_outline,
-                        color: AppColors.textTertiary,
-                        size: 20,
-                      )
-                    : Text(
-                        '$tier',
-                        style: AppTypography.headlineSmall.copyWith(
-                          color: tierColor,
+            Row(
+              children: [
+                // Tier indicator
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: isLocked
+                        ? AppColors.cardBackground
+                        : tierColor.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: isLocked
+                        ? Icon(
+                            Icons.lock_outline,
+                            color: AppColors.textTertiary,
+                            size: 20,
+                          )
+                        : Text(
+                            '$tier',
+                            style: AppTypography.headlineSmall.copyWith(
+                              color: tierColor,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Label and description
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _label,
+                        style: AppTypography.labelLarge.copyWith(
+                          color: isLocked
+                              ? AppColors.textTertiary
+                              : AppColors.textPrimary,
                         ),
                       ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            // Label and description
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _label,
-                    style: AppTypography.labelLarge.copyWith(
-                      color: isLocked
-                          ? AppColors.textTertiary
-                          : AppColors.textPrimary,
-                    ),
+                      const SizedBox(height: 2),
+                      Text(
+                        isLocked ? 'Locked' : _description,
+                        style: AppTypography.labelSmall.copyWith(
+                          color: isLocked
+                              ? AppColors.textTertiary
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    _description,
-                    style: AppTypography.labelSmall.copyWith(
-                      color: isLocked
-                          ? AppColors.textTertiary
-                          : AppColors.textSecondary,
-                    ),
+                ),
+                // Selection indicator or lock icon
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle,
+                    color: tierColor,
+                    size: 24,
+                  )
+                else if (isLocked)
+                  Icon(
+                    Icons.chevron_right,
+                    color: AppColors.textTertiary,
+                    size: 24,
                   ),
-                ],
-              ),
+              ],
             ),
-            // Selection indicator
-            if (isSelected)
-              Icon(
-                Icons.check_circle,
-                color: tierColor,
-                size: 24,
+            // Unlock progress bar for locked tiers
+            if (isLocked && unlockProgress > 0) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: unlockProgress,
+                  backgroundColor: AppColors.ghostBorder,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    tierColor.withOpacity(0.5),
+                  ),
+                  minHeight: 4,
+                ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                '${(unlockProgress * 100).toInt()}% progress',
+                style: AppTypography.labelSmall.copyWith(
+                  color: AppColors.textTertiary,
+                  fontSize: 10,
+                ),
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  void _showLockedDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surfaceElevated,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            Icon(
+              Icons.lock_outline,
+              color: AppColors.vividViolet,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              '$_label Locked',
+              style: AppTypography.headlineSmall,
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              unlockRequirement ?? 'Complete previous difficulty to unlock.',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.textSecondary,
+              ),
+            ),
+            if (unlockProgress > 0) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Your progress: ${(unlockProgress * 100).toInt()}%',
+                style: AppTypography.labelMedium.copyWith(
+                  color: AppColors.electricCyan,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: unlockProgress,
+                  backgroundColor: AppColors.ghostBorder,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    AppColors.electricCyan,
+                  ),
+                  minHeight: 8,
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(
+              'Got it',
+              style: AppTypography.labelLarge.copyWith(
+                color: AppColors.electricCyan,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

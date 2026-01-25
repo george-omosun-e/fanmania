@@ -204,7 +204,11 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      return (data['categories'] as List)
+      final categories = data['categories'] as List<dynamic>?;
+      if (categories == null) {
+        return [];
+      }
+      return categories
           .map((c) => Category.fromJson(c))
           .toList();
     } else {
@@ -255,7 +259,11 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      return (data['challenges'] as List)
+      final challenges = data['challenges'] as List<dynamic>?;
+      if (challenges == null || challenges.isEmpty) {
+        return [];
+      }
+      return challenges
           .map((c) => Challenge.fromJson(c))
           .toList();
     } else {

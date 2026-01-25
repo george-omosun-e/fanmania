@@ -6,9 +6,11 @@ import '../../core/theme/app_typography.dart';
 import '../../models/category.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/category_provider.dart';
+import '../../providers/notification_provider.dart';
 import '../../widgets/glassmorphic_card.dart';
 import '../../widgets/category_icon.dart';
 import '../../widgets/gradient_progress_bar.dart';
+import '../leaderboard/leaderboard_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,9 +25,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Fetch categories when screen loads
+    // Fetch categories and notifications when screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CategoryProvider>().fetchCategories();
+      context.read<NotificationProvider>().fetchNotifications();
     });
   }
 
@@ -37,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
           index: _currentNavIndex,
           children: const [
             _HomeTab(),
-            _LeaderboardTab(),
+            LeaderboardTab(),
             _ProfileTab(),
           ],
         ),
@@ -148,7 +151,10 @@ class _HomeTab extends StatelessWidget {
   Widget build(BuildContext context) {
     return RefreshIndicator(
       onRefresh: () async {
-        await context.read<CategoryProvider>().refresh();
+        await Future.wait([
+          context.read<AuthProvider>().refreshUser(),
+          context.read<CategoryProvider>().refresh(),
+        ]);
       },
       color: AppColors.electricCyan,
       backgroundColor: AppColors.surfaceElevated,
@@ -187,7 +193,9 @@ class _HomeTab extends StatelessWidget {
 class _UserStatsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final user = context.watch<AuthProvider>().currentUser;
+    final authProvider = context.watch<AuthProvider>();
+    final user = authProvider.currentUser;
+    final stats = authProvider.userStats;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -251,31 +259,34 @@ class _UserStatsHeader extends StatelessWidget {
                 ),
               ),
               // Notification bell
-              IconButton(
-                onPressed: () {
-                  // TODO: Navigate to notifications
-                },
-                icon: Stack(
-                  children: [
-                    const Icon(
-                      Icons.notifications_outlined,
-                      color: AppColors.textSecondary,
-                      size: 28,
-                    ),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        width: 10,
-                        height: 10,
-                        decoration: const BoxDecoration(
-                          color: AppColors.magentaPop,
-                          shape: BoxShape.circle,
+              Consumer<NotificationProvider>(
+                builder: (context, notificationProvider, _) {
+                  return IconButton(
+                    onPressed: () => context.push('/notifications'),
+                    icon: Stack(
+                      children: [
+                        const Icon(
+                          Icons.notifications_outlined,
+                          color: AppColors.textSecondary,
+                          size: 28,
                         ),
-                      ),
+                        if (notificationProvider.hasUnread)
+                          Positioned(
+                            right: 0,
+                            top: 0,
+                            child: Container(
+                              width: 10,
+                              height: 10,
+                              decoration: const BoxDecoration(
+                                color: AppColors.magentaPop,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             ],
           ),
@@ -288,7 +299,7 @@ class _UserStatsHeader extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   label: 'Total Points',
-                  value: _formatNumber(user?.totalPoints ?? 0),
+                  value: _formatNumber(stats?.totalPoints ?? user?.totalPoints ?? 0),
                   icon: Icons.stars_rounded,
                   color: AppColors.electricCyan,
                 ),
@@ -297,7 +308,9 @@ class _UserStatsHeader extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   label: 'Global Rank',
-                  value: user?.globalRank != null ? '#${user!.globalRank}' : '--',
+                  value: (stats?.globalRank ?? user?.globalRank) != null
+                      ? '#${stats?.globalRank ?? user!.globalRank}'
+                      : '--',
                   icon: Icons.emoji_events_rounded,
                   color: AppColors.vividViolet,
                 ),
@@ -306,7 +319,7 @@ class _UserStatsHeader extends StatelessWidget {
               Expanded(
                 child: _StatCard(
                   label: 'Streak',
-                  value: '0', // TODO: Get from user stats
+                  value: '${stats?.currentStreak ?? 0}',
                   icon: Icons.local_fire_department_rounded,
                   color: AppColors.magentaPop,
                   suffix: ' days',
@@ -583,40 +596,7 @@ class _ErrorState extends StatelessWidget {
   }
 }
 
-/// Placeholder for Leaderboard tab
-class _LeaderboardTab extends StatelessWidget {
-  const _LeaderboardTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.leaderboard_rounded,
-            size: 64,
-            color: AppColors.vividViolet.withOpacity(0.5),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Leaderboards',
-            style: AppTypography.headlineMedium,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Coming soon',
-            style: AppTypography.bodyMedium.copyWith(
-              color: AppColors.textSecondary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Placeholder for Profile tab
+/// Profile tab
 class _ProfileTab extends StatelessWidget {
   const _ProfileTab();
 
@@ -629,7 +609,27 @@ class _ProfileTab extends StatelessWidget {
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          const SizedBox(height: 40),
+          // Edit button
+          Align(
+            alignment: Alignment.topRight,
+            child: IconButton(
+              onPressed: () => context.push('/profile/edit'),
+              icon: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.ghostBorder),
+                ),
+                child: const Icon(
+                  Icons.edit_outlined,
+                  color: AppColors.textSecondary,
+                  size: 20,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
           // Avatar
           Container(
             width: 100,
