@@ -22,6 +22,7 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   String? _selectedAnswer;
   bool _showingFeedback = false;
   bool? _lastAnswerCorrect;
+  bool _navigatedToResult = false; // Prevent double navigation
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
 
@@ -52,15 +53,18 @@ class _ChallengeScreenState extends State<ChallengeScreen>
     final provider = context.read<ChallengeProvider>();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
+      if (!mounted || _showingFeedback) {
         timer.cancel();
         return;
       }
 
       final currentSeconds = provider.remainingSeconds;
-      if (currentSeconds > 0 && provider.timerActive) {
+      if (currentSeconds > 1) {
         provider.updateTimer(currentSeconds - 1);
-      } else if (currentSeconds <= 0 && provider.timerActive) {
+      } else if (currentSeconds == 1) {
+        provider.updateTimer(0);
+      } else if (currentSeconds <= 0 && !_showingFeedback) {
+        // Time's up!
         timer.cancel();
         _onTimeUp();
       }
@@ -68,24 +72,29 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   }
 
   void _onTimeUp() async {
-    if (_showingFeedback) return;
+    if (_showingFeedback || _navigatedToResult) return;
 
     final provider = context.read<ChallengeProvider>();
 
-    // Submit empty answer (will be marked wrong)
-    await provider.onTimeExpired();
-
-    if (!mounted) return;
-
-    // Show "Time's Up!" feedback
+    // Show "Time's Up!" feedback immediately (don't wait for API)
     _lastAnswerCorrect = false;
     setState(() {
       _showingFeedback = true;
     });
 
+    // Submit empty answer in background (don't block UI)
+    provider.onTimeExpired().timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        // Ignore timeout, continue anyway
+      },
+    ).catchError((_) {
+      // Ignore errors, continue anyway
+    });
+
     await Future.delayed(const Duration(milliseconds: 1500));
 
-    if (!mounted) return;
+    if (!mounted || _navigatedToResult) return;
 
     // Always try to go to next question, only end if no more
     if (provider.hasMoreChallenges) {
@@ -98,12 +107,13 @@ class _ChallengeScreenState extends State<ChallengeScreen>
       _startTimer();
     } else {
       // No more challenges - go to final result
+      _navigatedToResult = true;
       context.go('/challenge/result');
     }
   }
 
   void _selectAnswer(String answerId) {
-    if (_selectedAnswer != null) return; // Already selected
+    if (_showingFeedback) return; // Can't change during feedback
 
     setState(() {
       _selectedAnswer = answerId;
@@ -111,14 +121,14 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   }
 
   Future<void> _submitAnswer() async {
-    if (_selectedAnswer == null || _showingFeedback) return;
+    if (_selectedAnswer == null || _showingFeedback || _navigatedToResult) return;
 
     final provider = context.read<ChallengeProvider>();
     _timer?.cancel();
 
     final success = await provider.submitAnswer(_selectedAnswer!);
 
-    if (success && mounted) {
+    if (success && mounted && !_navigatedToResult) {
       final result = provider.lastResult;
       _lastAnswerCorrect = result?.isCorrect ?? false;
 
@@ -130,7 +140,7 @@ class _ChallengeScreenState extends State<ChallengeScreen>
       // Wait for feedback animation, then advance
       await Future.delayed(const Duration(milliseconds: 1200));
 
-      if (!mounted) return;
+      if (!mounted || _navigatedToResult) return;
 
       // Check if there are more challenges
       if (provider.hasMoreChallenges) {
@@ -144,6 +154,7 @@ class _ChallengeScreenState extends State<ChallengeScreen>
         _startTimer();
       } else {
         // No more challenges - go to final result
+        _navigatedToResult = true;
         context.go('/challenge/result');
       }
     }

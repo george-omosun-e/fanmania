@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -235,19 +236,28 @@ func (s *AIChallengeService) convertToChallenge(
 	challengeType string,
 	generated *ai.GeneratedChallenge,
 ) (*models.Challenge, error) {
-	// Build question data JSON
+	// Build question data JSON with shuffled options
 	questionData := models.QuestionData{
 		Type:     challengeType,
 		Question: generated.Question,
 		Options:  []models.QuestionOption{},
 	}
 
+	// Create options and shuffle them
+	options := make([]models.QuestionOption, 0, len(generated.Options))
 	for _, opt := range generated.Options {
-		questionData.Options = append(questionData.Options, models.QuestionOption{
+		options = append(options, models.QuestionOption{
 			ID:   opt.ID,
 			Text: opt.Text,
 		})
 	}
+
+	// Shuffle options randomly
+	rand.Shuffle(len(options), func(i, j int) {
+		options[i], options[j] = options[j], options[i]
+	})
+
+	questionData.Options = options
 
 	questionJSON, err := json.Marshal(questionData)
 	if err != nil {

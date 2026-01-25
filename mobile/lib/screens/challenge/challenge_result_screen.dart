@@ -22,6 +22,16 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
 
+  // Cache session data to prevent losing it if provider resets
+  int _correctCount = 0;
+  int _totalAnswered = 0;
+  int _totalPoints = 0;
+  int _accuracy = 0;
+  int? _newTotalPoints;
+  String? _categoryId;
+  String? _categoryName;
+  bool _dataLoaded = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,10 +57,32 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
 
     _controller.forward();
 
-    // Refresh user data to get updated points/rank
+    // Refresh user data after frame is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AuthProvider>().refreshUser();
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Cache session data on first dependency resolution (before first build completes)
+    if (!_dataLoaded) {
+      _cacheSessionData();
+    }
+  }
+
+  void _cacheSessionData() {
+    final provider = context.read<ChallengeProvider>();
+    _correctCount = provider.sessionCorrectCount;
+    _totalAnswered = provider.sessionQuestionsAnswered;
+    _totalPoints = provider.sessionTotalPoints;
+    _accuracy = provider.sessionAccuracy;
+    _newTotalPoints = provider.lastResult?.newTotalPoints;
+    _categoryId = provider.currentCategory?.id;
+    _categoryName = provider.currentCategory?.name;
+    // Always mark as loaded - show whatever data we have
+    _dataLoaded = true;
   }
 
   @override
@@ -61,141 +93,136 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Show loading only if data hasn't been cached yet
+    if (!_dataLoaded) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: CircularProgressIndicator(
+              color: AppColors.electricCyan,
+            ),
+          ),
+        ),
+      );
+    }
+
+    final isGoodResult = _accuracy >= 50;
+
     return PopScope(
       canPop: false,
       child: Scaffold(
         body: SafeArea(
-          child: Consumer<ChallengeProvider>(
-            builder: (context, provider, _) {
-              final correctCount = provider.sessionCorrectCount;
-              final totalAnswered = provider.sessionQuestionsAnswered;
-              final totalPoints = provider.sessionTotalPoints;
-              final accuracy = provider.sessionAccuracy;
-              final result = provider.lastResult;
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                const Spacer(),
 
-              if (totalAnswered == 0) {
-                return const Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.electricCyan,
+                // Result icon with animation
+                ScaleTransition(
+                  scale: _scaleAnimation,
+                  child: _ResultIcon(isCorrect: isGoodResult),
+                ),
+
+                const SizedBox(height: 32),
+
+                // Result text
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Column(
+                    children: [
+                      Text(
+                        'Session Complete!',
+                        style: AppTypography.displayMedium.copyWith(
+                          color: AppColors.electricCyan,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        isGoodResult
+                            ? 'Great job! Keep it up!'
+                            : 'Keep practicing!',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ),
-                );
-              }
+                ),
 
-              final isGoodResult = accuracy >= 50;
+                const SizedBox(height: 40),
 
-              return Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    const Spacer(),
+                // Session stats cards
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: _SessionStatsSection(
+                    correctCount: _correctCount,
+                    totalAnswered: _totalAnswered,
+                    totalPoints: _totalPoints,
+                    accuracy: _accuracy,
+                  ),
+                ),
 
-                    // Result icon with animation
-                    ScaleTransition(
-                      scale: _scaleAnimation,
-                      child: _ResultIcon(isCorrect: isGoodResult),
-                    ),
+                const SizedBox(height: 24),
 
-                    const SizedBox(height: 32),
-
-                    // Result text
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: Column(
+                // New total points
+                if (_newTotalPoints != null)
+                  FadeTransition(
+                    opacity: _fadeAnimation,
+                    child: GlassmorphicCard(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          const Icon(
+                            Icons.account_balance_wallet_rounded,
+                            color: AppColors.electricCyan,
+                          ),
+                          const SizedBox(width: 12),
                           Text(
-                            'Session Complete!',
-                            style: AppTypography.displayMedium.copyWith(
+                            'Total Points: ',
+                            style: AppTypography.labelLarge,
+                          ),
+                          Text(
+                            '$_newTotalPoints',
+                            style: AppTypography.monoLarge.copyWith(
                               color: AppColors.electricCyan,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            isGoodResult
-                                ? 'Great job! Keep it up!'
-                                : 'Keep practicing!',
-                            style: AppTypography.bodyMedium.copyWith(
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
                         ],
                       ),
                     ),
+                  ),
 
-                    const SizedBox(height: 40),
+                const Spacer(),
 
-                    // Session stats cards
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: _SessionStatsSection(
-                        correctCount: correctCount,
-                        totalAnswered: totalAnswered,
-                        totalPoints: totalPoints,
-                        accuracy: accuracy,
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // New total points
-                    if (result != null)
-                      FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: GlassmorphicCard(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.account_balance_wallet_rounded,
-                                color: AppColors.electricCyan,
-                              ),
-                              const SizedBox(width: 12),
-                              Text(
-                                'Total Points: ',
-                                style: AppTypography.labelLarge,
-                              ),
-                              Text(
-                                '${result.newTotalPoints}',
-                                style: AppTypography.monoLarge.copyWith(
-                                  color: AppColors.electricCyan,
-                                ),
-                              ),
-                            ],
-                          ),
+                // Action buttons
+                FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        width: double.infinity,
+                        child: NeonButton(
+                          text: 'Play Again',
+                          icon: Icons.replay_rounded,
+                          onPressed: () => _playAgain(context),
                         ),
                       ),
-
-                    const Spacer(),
-
-                    // Action buttons
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: Column(
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: NeonButton(
-                              text: 'Play Again',
-                              icon: Icons.replay_rounded,
-                              onPressed: () => _playAgain(context),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: NeonButton(
-                              text: 'Back to Home',
-                              isOutlined: true,
-                              onPressed: () => _endSession(context),
-                            ),
-                          ),
-                        ],
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: NeonButton(
+                          text: 'Back to Home',
+                          isOutlined: true,
+                          onPressed: () => _endSession(context),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              );
-            },
+              ],
+            ),
           ),
         ),
       ),
@@ -203,13 +230,17 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
   }
 
   void _playAgain(BuildContext context) {
-    final provider = context.read<ChallengeProvider>();
-    final category = provider.currentCategory;
-    if (category != null) {
-      provider.startSession(category);
-      context.go('/category/${category.id}');
+    if (_categoryId != null && _categoryId!.isNotEmpty) {
+      context.go('/category/$_categoryId');
     } else {
-      context.go('/home');
+      // Try to get category from provider as fallback
+      final provider = context.read<ChallengeProvider>();
+      final category = provider.currentCategory;
+      if (category != null) {
+        context.go('/category/${category.id}');
+      } else {
+        context.go('/home');
+      }
     }
   }
 

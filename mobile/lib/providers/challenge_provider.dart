@@ -223,11 +223,9 @@ class ChallengeProvider extends ChangeNotifier {
   }
 
   /// Update timer (called from UI every second)
+  /// Note: UI is responsible for calling onTimeExpired when time runs out
   void updateTimer(int seconds) {
     _remainingSeconds = seconds;
-    if (seconds <= 0 && _timerActive) {
-      onTimeExpired();
-    }
     notifyListeners();
   }
 

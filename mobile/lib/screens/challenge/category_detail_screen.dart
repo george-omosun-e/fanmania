@@ -635,7 +635,7 @@ class _ChallengeInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tierColor = AppColors.getTierColor(difficulty);
     final timeLimit = _getTimeLimit(difficulty);
-    final questionCount = 5;
+    final questionCount = 10; // Matches fetchChallenges default limit
 
     return GlassmorphicCard(
       borderColor: tierColor.withOpacity(0.3),

@@ -63,18 +63,22 @@ func (s *ChallengeService) GetChallengesForUser(
 		return nil, fmt.Errorf("failed to get challenges: %w", err)
 	}
 
-	// If no challenges available and AI service is configured, generate some
-	if len(challenges) == 0 && s.aiChallengeService != nil {
+	// If not enough challenges and AI service is configured, generate more
+	// Generate when pool is less than requested limit
+	if len(challenges) < limit && s.aiChallengeService != nil {
 		tier := 1
 		if difficultyTier != nil {
 			tier = *difficultyTier
 		}
 
+		// How many more do we need?
+		needed := limit - len(challenges)
+
 		// Generate a few challenges synchronously (to avoid timeout)
-		// Limit to 3 synchronous generations to keep response time reasonable
-		syncLimit := 3
-		if limit < syncLimit {
-			syncLimit = limit
+		// Limit to 5 synchronous generations to keep response time reasonable
+		syncLimit := 5
+		if needed < syncLimit {
+			syncLimit = needed
 		}
 
 		for i := 0; i < syncLimit; i++ {
@@ -88,10 +92,10 @@ func (s *ChallengeService) GetChallengesForUser(
 		}
 
 		// Generate more challenges in background for future requests
-		if limit > syncLimit {
+		if needed > syncLimit {
 			go func() {
 				bgCtx := context.Background()
-				for i := 0; i < limit-syncLimit; i++ {
+				for i := 0; i < needed-syncLimit; i++ {
 					s.aiChallengeService.GenerateAndSaveChallenge(
 						bgCtx, categoryID, tier, "multiple_choice",
 					)

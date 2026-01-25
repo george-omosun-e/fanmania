@@ -213,7 +213,7 @@ class _CategoryLeaderboardView extends StatelessWidget {
   Widget build(BuildContext context) {
     final categories = context.watch<CategoryProvider>().categories;
 
-    if (selectedCategoryId == null) {
+    if (selectedCategoryId == null || selectedCategoryId!.isEmpty) {
       return _CategorySelector(
         categories: categories,
         onCategorySelected: onCategorySelected,
