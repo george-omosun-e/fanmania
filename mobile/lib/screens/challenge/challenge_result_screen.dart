@@ -67,16 +67,21 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
         body: SafeArea(
           child: Consumer<ChallengeProvider>(
             builder: (context, provider, _) {
+              final correctCount = provider.sessionCorrectCount;
+              final totalAnswered = provider.sessionQuestionsAnswered;
+              final totalPoints = provider.sessionTotalPoints;
+              final accuracy = provider.sessionAccuracy;
               final result = provider.lastResult;
-              final hasMore = provider.hasMoreChallenges;
 
-              if (result == null) {
+              if (totalAnswered == 0) {
                 return const Center(
                   child: CircularProgressIndicator(
                     color: AppColors.electricCyan,
                   ),
                 );
               }
+
+              final isGoodResult = accuracy >= 50;
 
               return Padding(
                 padding: const EdgeInsets.all(24),
@@ -87,7 +92,7 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
                     // Result icon with animation
                     ScaleTransition(
                       scale: _scaleAnimation,
-                      child: _ResultIcon(isCorrect: result.isCorrect),
+                      child: _ResultIcon(isCorrect: isGoodResult),
                     ),
 
                     const SizedBox(height: 32),
@@ -98,18 +103,16 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
                       child: Column(
                         children: [
                           Text(
-                            result.isCorrect ? 'Correct!' : 'Wrong!',
+                            'Session Complete!',
                             style: AppTypography.displayMedium.copyWith(
-                              color: result.isCorrect
-                                  ? AppColors.success
-                                  : AppColors.error,
+                              color: AppColors.electricCyan,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            result.isCorrect
+                            isGoodResult
                                 ? 'Great job! Keep it up!'
-                                : 'Better luck next time!',
+                                : 'Keep practicing!',
                             style: AppTypography.bodyMedium.copyWith(
                               color: AppColors.textSecondary,
                             ),
@@ -120,22 +123,47 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
 
                     const SizedBox(height: 40),
 
-                    // Stats cards
+                    // Session stats cards
                     FadeTransition(
                       opacity: _fadeAnimation,
-                      child: _StatsSection(result: result),
+                      child: _SessionStatsSection(
+                        correctCount: correctCount,
+                        totalAnswered: totalAnswered,
+                        totalPoints: totalPoints,
+                        accuracy: accuracy,
+                      ),
                     ),
 
-                    // Explanation (if available)
-                    if (result.explanation != null) ...[
-                      const SizedBox(height: 24),
+                    const SizedBox(height: 24),
+
+                    // New total points
+                    if (result != null)
                       FadeTransition(
                         opacity: _fadeAnimation,
-                        child: _ExplanationCard(
-                          explanation: result.explanation!,
+                        child: GlassmorphicCard(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(
+                                Icons.account_balance_wallet_rounded,
+                                color: AppColors.electricCyan,
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Total Points: ',
+                                style: AppTypography.labelLarge,
+                              ),
+                              Text(
+                                '${result.newTotalPoints}',
+                                style: AppTypography.monoLarge.copyWith(
+                                  color: AppColors.electricCyan,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ],
 
                     const Spacer(),
 
@@ -144,30 +172,22 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
                       opacity: _fadeAnimation,
                       child: Column(
                         children: [
-                          if (hasMore) ...[
-                            SizedBox(
-                              width: double.infinity,
-                              child: NeonButton(
-                                text: 'Next Question',
-                                icon: Icons.arrow_forward_rounded,
-                                onPressed: () => _nextQuestion(context),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
                           SizedBox(
                             width: double.infinity,
-                            child: hasMore
-                                ? NeonButton(
-                                    text: 'End Session',
-                                    isOutlined: true,
-                                    onPressed: () => _endSession(context),
-                                  )
-                                : NeonButton(
-                                    text: 'Complete',
-                                    icon: Icons.check_circle_outline,
-                                    onPressed: () => _endSession(context),
-                                  ),
+                            child: NeonButton(
+                              text: 'Play Again',
+                              icon: Icons.replay_rounded,
+                              onPressed: () => _playAgain(context),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: NeonButton(
+                              text: 'Back to Home',
+                              isOutlined: true,
+                              onPressed: () => _endSession(context),
+                            ),
                           ),
                         ],
                       ),
@@ -182,10 +202,15 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
     );
   }
 
-  void _nextQuestion(BuildContext context) {
+  void _playAgain(BuildContext context) {
     final provider = context.read<ChallengeProvider>();
-    provider.nextChallenge();
-    context.go('/challenge');
+    final category = provider.currentCategory;
+    if (category != null) {
+      provider.startSession(category);
+      context.go('/category/${category.id}');
+    } else {
+      context.go('/home');
+    }
   }
 
   void _endSession(BuildContext context) {
@@ -237,11 +262,19 @@ class _ResultIcon extends StatelessWidget {
   }
 }
 
-/// Stats section showing points and streak
-class _StatsSection extends StatelessWidget {
-  final ChallengeResult result;
+/// Session stats section
+class _SessionStatsSection extends StatelessWidget {
+  final int correctCount;
+  final int totalAnswered;
+  final int totalPoints;
+  final int accuracy;
 
-  const _StatsSection({required this.result});
+  const _SessionStatsSection({
+    required this.correctCount,
+    required this.totalAnswered,
+    required this.totalPoints,
+    required this.accuracy,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -249,47 +282,32 @@ class _StatsSection extends StatelessWidget {
       children: [
         Expanded(
           child: _StatCard(
+            label: 'Correct',
+            value: '$correctCount/$totalAnswered',
+            icon: Icons.check_circle_rounded,
+            color: AppColors.success,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatCard(
+            label: 'Accuracy',
+            value: '$accuracy%',
+            icon: Icons.analytics_rounded,
+            color: accuracy >= 50 ? AppColors.electricCyan : AppColors.warning,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _StatCard(
             label: 'Points',
-            value: result.isCorrect
-                ? '+${result.pointsEarned}'
-                : '${result.pointsEarned}',
+            value: totalPoints >= 0 ? '+$totalPoints' : '$totalPoints',
             icon: Icons.stars_rounded,
-            color: result.isCorrect ? AppColors.success : AppColors.error,
-            isPositive: result.isCorrect,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            label: 'Total',
-            value: _formatNumber(result.newTotalPoints),
-            icon: Icons.account_balance_wallet_rounded,
-            color: AppColors.electricCyan,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            label: 'Streak',
-            value: '${result.streakDays}',
-            icon: Icons.local_fire_department_rounded,
-            color: result.streakUpdated
-                ? AppColors.magentaPop
-                : AppColors.textTertiary,
-            suffix: result.streakUpdated ? '!' : '',
+            color: totalPoints >= 0 ? AppColors.success : AppColors.error,
           ),
         ),
       ],
     );
-  }
-
-  String _formatNumber(int number) {
-    if (number >= 1000000) {
-      return '${(number / 1000000).toStringAsFixed(1)}M';
-    } else if (number >= 1000) {
-      return '${(number / 1000).toStringAsFixed(1)}K';
-    }
-    return number.toString();
   }
 }
 

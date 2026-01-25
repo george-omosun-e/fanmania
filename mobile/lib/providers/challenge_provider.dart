@@ -14,6 +14,11 @@ class ChallengeProvider extends ChangeNotifier {
   int _currentChallengeIndex = 0;
   ChallengeResult? _lastResult;
 
+  // Session statistics
+  int _sessionCorrectCount = 0;
+  int _sessionTotalPoints = 0;
+  int _sessionQuestionsAnswered = 0;
+
   // Loading states
   bool _isLoading = false;
   bool _isSubmitting = false;
@@ -48,6 +53,14 @@ class ChallengeProvider extends ChangeNotifier {
   int get totalChallenges => _challenges.length;
   int get completedChallenges => _currentChallengeIndex;
 
+  // Session stats getters
+  int get sessionCorrectCount => _sessionCorrectCount;
+  int get sessionTotalPoints => _sessionTotalPoints;
+  int get sessionQuestionsAnswered => _sessionQuestionsAnswered;
+  int get sessionAccuracy => _sessionQuestionsAnswered > 0
+      ? ((_sessionCorrectCount / _sessionQuestionsAnswered) * 100).round()
+      : 0;
+
   // ==========================================
   // ACTIONS
   // ==========================================
@@ -60,6 +73,10 @@ class ChallengeProvider extends ChangeNotifier {
     _currentChallengeIndex = 0;
     _lastResult = null;
     _error = null;
+    // Reset session stats
+    _sessionCorrectCount = 0;
+    _sessionTotalPoints = 0;
+    _sessionQuestionsAnswered = 0;
     notifyListeners();
   }
 
@@ -134,6 +151,13 @@ class ChallengeProvider extends ChangeNotifier {
         selectedAnswer: selectedAnswer,
         timeTakenSeconds: timeTaken,
       );
+
+      // Update session stats
+      _sessionQuestionsAnswered++;
+      if (_lastResult!.isCorrect) {
+        _sessionCorrectCount++;
+      }
+      _sessionTotalPoints += _lastResult!.pointsEarned;
 
       _isSubmitting = false;
       notifyListeners();

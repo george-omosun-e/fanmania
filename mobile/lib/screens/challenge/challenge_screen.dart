@@ -20,6 +20,8 @@ class _ChallengeScreenState extends State<ChallengeScreen>
     with TickerProviderStateMixin {
   Timer? _timer;
   String? _selectedAnswer;
+  bool _showingFeedback = false;
+  bool? _lastAnswerCorrect;
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
 
@@ -66,10 +68,37 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   }
 
   void _onTimeUp() async {
+    if (_showingFeedback) return;
+
     final provider = context.read<ChallengeProvider>();
+
+    // Submit empty answer (will be marked wrong)
     await provider.onTimeExpired();
-    if (mounted) {
-      context.push('/challenge/result');
+
+    if (!mounted) return;
+
+    // Show "Time's Up!" feedback
+    _lastAnswerCorrect = false;
+    setState(() {
+      _showingFeedback = true;
+    });
+
+    await Future.delayed(const Duration(milliseconds: 1500));
+
+    if (!mounted) return;
+
+    // Always try to go to next question, only end if no more
+    if (provider.hasMoreChallenges) {
+      provider.nextChallenge();
+      setState(() {
+        _selectedAnswer = null;
+        _showingFeedback = false;
+        _lastAnswerCorrect = null;
+      });
+      _startTimer();
+    } else {
+      // No more challenges - go to final result
+      context.go('/challenge/result');
     }
   }
 
@@ -82,7 +111,7 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   }
 
   Future<void> _submitAnswer() async {
-    if (_selectedAnswer == null) return;
+    if (_selectedAnswer == null || _showingFeedback) return;
 
     final provider = context.read<ChallengeProvider>();
     _timer?.cancel();
@@ -90,7 +119,33 @@ class _ChallengeScreenState extends State<ChallengeScreen>
     final success = await provider.submitAnswer(_selectedAnswer!);
 
     if (success && mounted) {
-      context.push('/challenge/result');
+      final result = provider.lastResult;
+      _lastAnswerCorrect = result?.isCorrect ?? false;
+
+      // Show feedback briefly
+      setState(() {
+        _showingFeedback = true;
+      });
+
+      // Wait for feedback animation, then advance
+      await Future.delayed(const Duration(milliseconds: 1200));
+
+      if (!mounted) return;
+
+      // Check if there are more challenges
+      if (provider.hasMoreChallenges) {
+        // Move to next question
+        provider.nextChallenge();
+        setState(() {
+          _selectedAnswer = null;
+          _showingFeedback = false;
+          _lastAnswerCorrect = null;
+        });
+        _startTimer();
+      } else {
+        // No more challenges - go to final result
+        context.go('/challenge/result');
+      }
     }
   }
 
@@ -146,55 +201,67 @@ class _ChallengeScreenState extends State<ChallengeScreen>
                 );
               }
 
-              return Column(
+              return Stack(
                 children: [
-                  // Header
-                  _ChallengeHeader(
-                    currentIndex: provider.currentChallengeIndex + 1,
-                    totalCount: provider.totalChallenges,
-                    remainingSeconds: provider.remainingSeconds,
-                    totalSeconds: challenge.timeLimitSeconds ?? 60,
-                    difficulty: challenge.difficultyTier,
-                    onClose: _onBackPressed,
-                  ),
-
-                  // Question and answers
-                  Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Question card
-                          _QuestionCard(
-                            question: challenge.questionData.question,
-                            title: challenge.title,
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Answer options
-                          ...challenge.questionData.options.map(
-                            (option) => Padding(
-                              padding: const EdgeInsets.only(bottom: 12),
-                              child: _AnswerOption(
-                                option: option,
-                                isSelected: _selectedAnswer == option.id,
-                                onTap: () => _selectAnswer(option.id),
-                              ),
-                            ),
-                          ),
-                        ],
+                  Column(
+                    children: [
+                      // Header
+                      _ChallengeHeader(
+                        currentIndex: provider.currentChallengeIndex + 1,
+                        totalCount: provider.totalChallenges,
+                        remainingSeconds: provider.remainingSeconds,
+                        totalSeconds: challenge.timeLimitSeconds ?? 60,
+                        difficulty: challenge.difficultyTier,
+                        onClose: _onBackPressed,
                       ),
-                    ),
+
+                      // Question and answers
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Question card
+                              _QuestionCard(
+                                question: challenge.questionData.question,
+                                title: challenge.title,
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // Answer options
+                              ...challenge.questionData.options.map(
+                                (option) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: _AnswerOption(
+                                    option: option,
+                                    isSelected: _selectedAnswer == option.id,
+                                    isDisabled: _showingFeedback,
+                                    onTap: () => _selectAnswer(option.id),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      // Submit button
+                      _SubmitSection(
+                        isEnabled: _selectedAnswer != null && !_showingFeedback,
+                        isLoading: provider.isSubmitting,
+                        onSubmit: _submitAnswer,
+                      ),
+                    ],
                   ),
 
-                  // Submit button
-                  _SubmitSection(
-                    isEnabled: _selectedAnswer != null,
-                    isLoading: provider.isSubmitting,
-                    onSubmit: _submitAnswer,
-                  ),
+                  // Feedback overlay
+                  if (_showingFeedback)
+                    _FeedbackOverlay(
+                      isCorrect: _lastAnswerCorrect ?? false,
+                      isTimeUp: _selectedAnswer == null,
+                    ),
                 ],
               );
             },
@@ -412,18 +479,20 @@ class _QuestionCard extends StatelessWidget {
 class _AnswerOption extends StatelessWidget {
   final QuestionOption option;
   final bool isSelected;
+  final bool isDisabled;
   final VoidCallback onTap;
 
   const _AnswerOption({
     required this.option,
     required this.isSelected,
+    this.isDisabled = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: isDisabled ? null : onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(16),
@@ -551,6 +620,114 @@ class _SubmitSection extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Feedback overlay shown briefly after answering
+class _FeedbackOverlay extends StatefulWidget {
+  final bool isCorrect;
+  final bool isTimeUp;
+
+  const _FeedbackOverlay({
+    required this.isCorrect,
+    this.isTimeUp = false,
+  });
+
+  @override
+  State<_FeedbackOverlay> createState() => _FeedbackOverlayState();
+}
+
+class _FeedbackOverlayState extends State<_FeedbackOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    _scaleAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+
+    _controller.forward();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.isTimeUp
+        ? AppColors.warning
+        : (widget.isCorrect ? AppColors.success : AppColors.error);
+
+    final icon = widget.isTimeUp
+        ? Icons.timer_off_rounded
+        : (widget.isCorrect ? Icons.check_rounded : Icons.close_rounded);
+
+    final text = widget.isTimeUp
+        ? "Time's Up!"
+        : (widget.isCorrect ? 'Correct!' : 'Wrong!');
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        return Container(
+          color: Colors.black.withOpacity(0.5 * _fadeAnimation.value),
+          child: Center(
+            child: Transform.scale(
+              scale: _scaleAnimation.value,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: color.withOpacity(0.9),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withOpacity(0.5),
+                      blurRadius: 30,
+                      spreadRadius: 10,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 64,
+                      color: Colors.white,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      text,
+                      style: AppTypography.labelLarge.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
