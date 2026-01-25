@@ -17,10 +17,10 @@ import (
 
 // ChallengeService handles challenge business logic
 type ChallengeService struct {
-	challengeRepo *postgres.ChallengeRepository
-	userRepo      *postgres.UserRepository
-	categoryRepo  *postgres.CategoryRepository
-	// aiService would be injected here when implemented
+	challengeRepo      *postgres.ChallengeRepository
+	userRepo           *postgres.UserRepository
+	categoryRepo       *postgres.CategoryRepository
+	aiChallengeService *AIChallengeService
 }
 
 // NewChallengeService creates a new ChallengeService
@@ -34,6 +34,11 @@ func NewChallengeService(
 		userRepo:      userRepo,
 		categoryRepo:  categoryRepo,
 	}
+}
+
+// SetAIChallengeService sets the AI challenge service for on-demand generation
+func (s *ChallengeService) SetAIChallengeService(aiService *AIChallengeService) {
+	s.aiChallengeService = aiService
 }
 
 // GetChallengesForUser retrieves available challenges for a user
@@ -56,6 +61,25 @@ func (s *ChallengeService) GetChallengesForUser(
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get challenges: %w", err)
+	}
+
+	// If no challenges available and AI service is configured, generate some
+	if len(challenges) == 0 && s.aiChallengeService != nil {
+		tier := 1
+		if difficultyTier != nil {
+			tier = *difficultyTier
+		}
+
+		// Generate challenges on demand
+		for i := 0; i < limit; i++ {
+			result, err := s.aiChallengeService.GenerateAndSaveChallenge(
+				ctx, categoryID, tier, "multiple_choice",
+			)
+			if err != nil || !result.Success {
+				continue
+			}
+			challenges = append(challenges, *result.Challenge)
+		}
 	}
 
 	// Remove correct answer hash before returning

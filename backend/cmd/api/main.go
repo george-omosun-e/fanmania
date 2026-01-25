@@ -70,7 +70,9 @@ func main() {
 			challengeRepo,
 			categoryRepo,
 		)
-		log.Println("✓ AI Challenge Service initialized")
+		// Wire AI service to challenge service for on-demand generation
+		challengeService.SetAIChallengeService(aiChallengeService)
+		log.Println("✓ AI Challenge Service initialized and connected")
 	} else {
 		log.Println("⚠ AI Challenge Service disabled (no ANTHROPIC_API_KEY)")
 	}
