@@ -70,8 +70,14 @@ func (s *ChallengeService) GetChallengesForUser(
 			tier = *difficultyTier
 		}
 
-		// Generate challenges on demand
-		for i := 0; i < limit; i++ {
+		// Generate a few challenges synchronously (to avoid timeout)
+		// Limit to 3 synchronous generations to keep response time reasonable
+		syncLimit := 3
+		if limit < syncLimit {
+			syncLimit = limit
+		}
+
+		for i := 0; i < syncLimit; i++ {
 			result, err := s.aiChallengeService.GenerateAndSaveChallenge(
 				ctx, categoryID, tier, "multiple_choice",
 			)
@@ -79,6 +85,18 @@ func (s *ChallengeService) GetChallengesForUser(
 				continue
 			}
 			challenges = append(challenges, *result.Challenge)
+		}
+
+		// Generate more challenges in background for future requests
+		if limit > syncLimit {
+			go func() {
+				bgCtx := context.Background()
+				for i := 0; i < limit-syncLimit; i++ {
+					s.aiChallengeService.GenerateAndSaveChallenge(
+						bgCtx, categoryID, tier, "multiple_choice",
+					)
+				}
+			}()
 		}
 	}
 
