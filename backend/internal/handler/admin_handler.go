@@ -214,6 +214,54 @@ func (h *AdminHandler) ValidateAPIKey(c *fiber.Ctx) error {
 	})
 }
 
+// GenerateCategories generates new category ideas using AI
+// POST /admin/categories/generate
+func (h *AdminHandler) GenerateCategories(c *fiber.Ctx) error {
+	userID, err := middleware.GetUserID(c)
+	if err != nil {
+		return c.Status(errors.ErrUnauthorized.StatusCode).JSON(fiber.Map{
+			"error": errors.ErrUnauthorized.Message,
+			"code":  errors.ErrUnauthorized.Code,
+		})
+	}
+
+	// TODO: Check if user is admin
+	_ = userID
+
+	var req struct {
+		Count          int  `json:"count" validate:"required,min=1,max=10"`
+		SaveToDatabase bool `json:"save_to_database"`
+	}
+
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Invalid request body",
+			"code":  "INVALID_REQUEST",
+		})
+	}
+
+	if req.Count == 0 {
+		req.Count = 3 // Default to 3 categories
+	}
+
+	// Generate categories
+	var result *service.GenerateCategoryResult
+	if req.SaveToDatabase {
+		result, err = h.aiChallengeService.GenerateAndSaveCategories(c.Context(), req.Count)
+	} else {
+		result, err = h.aiChallengeService.GenerateCategories(c.Context(), req.Count)
+	}
+
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+			"code":  errors.ErrInternalServer.Code,
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(result)
+}
+
 // GetGenerationStats returns statistics about AI-generated challenges
 // GET /admin/challenges/stats
 func (h *AdminHandler) GetGenerationStats(c *fiber.Ctx) error {

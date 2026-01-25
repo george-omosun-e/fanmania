@@ -61,14 +61,15 @@ func (s *AIChallengeService) GenerateChallenge(
 		return nil, fmt.Errorf("failed to get category: %w", err)
 	}
 
-	// Get existing challenges to avoid duplicates
+	// Get existing challenges to avoid duplicates (get more for better deduplication)
 	existingChallenges, _ := s.challengeRepo.GetByCategoryAndDifficulty(
-		ctx, categoryID, difficultyTier, 10,
+		ctx, categoryID, difficultyTier, 50,
 	)
-	
+
 	existingTitles := []string{}
 	for _, ch := range existingChallenges {
-		existingTitles = append(existingTitles, ch.Title)
+		// Include both title and a snippet of the question for better deduplication
+		existingTitles = append(existingTitles, fmt.Sprintf("- %s", ch.Title))
 	}
 
 	// Build prompt based on challenge type
@@ -313,4 +314,102 @@ func (s *AIChallengeService) calculateTimeLimit(difficultyTier int, challengeTyp
 // ValidateAPIKey validates the Anthropic API key
 func (s *AIChallengeService) ValidateAPIKey(ctx context.Context) error {
 	return s.anthropicClient.ValidateAPIKey(ctx)
+}
+
+// GenerateCategoryResult represents the result of category generation
+type GenerateCategoryResult struct {
+	Categories    []models.Category `json:"categories,omitempty"`
+	GeneratedJSON string            `json:"generated_json,omitempty"`
+	Success       bool              `json:"success"`
+	Error         string            `json:"error,omitempty"`
+}
+
+// GenerateCategories generates new category ideas using AI
+func (s *AIChallengeService) GenerateCategories(
+	ctx context.Context,
+	count int,
+) (*GenerateCategoryResult, error) {
+	// Get existing categories to avoid duplicates
+	existingCategories, _ := s.categoryRepo.GetAll(ctx, nil)
+	existingNames := []string{}
+	for _, cat := range existingCategories {
+		existingNames = append(existingNames, fmt.Sprintf("- %s", cat.Name))
+	}
+
+	// Build prompt
+	prompt := s.promptBuilder.BuildCategoryGenerationPrompt(existingNames, count)
+	systemPrompt := s.promptBuilder.GetCategorySystemPrompt()
+
+	// Generate with AI
+	response, err := s.anthropicClient.GenerateChallenge(ctx, prompt, systemPrompt)
+	if err != nil {
+		return &GenerateCategoryResult{
+			Success: false,
+			Error:   fmt.Sprintf("AI generation failed: %v", err),
+		}, nil
+	}
+
+	// Clean and parse JSON response
+	cleanedJSON := ai.CleanJSONResponse(response)
+
+	var generatedResponse ai.GeneratedCategoriesResponse
+	if err := json.Unmarshal([]byte(cleanedJSON), &generatedResponse); err != nil {
+		return &GenerateCategoryResult{
+			Success:       false,
+			Error:         fmt.Sprintf("Failed to parse AI response: %v", err),
+			GeneratedJSON: response,
+		}, nil
+	}
+
+	// Convert to category models
+	categories := []models.Category{}
+	for _, gen := range generatedResponse.Categories {
+		desc := gen.Description
+		cat := models.Category{
+			Name:           gen.Name,
+			Slug:           gen.Slug,
+			Description:    &desc,
+			IconType:       gen.IconType,
+			ColorPrimary:   gen.ColorPrimary,
+			ColorSecondary: gen.ColorSecondary,
+			IsActive:       true,
+			SortOrder:      len(existingCategories) + len(categories) + 1,
+		}
+		categories = append(categories, cat)
+	}
+
+	return &GenerateCategoryResult{
+		Categories:    categories,
+		GeneratedJSON: cleanedJSON,
+		Success:       true,
+	}, nil
+}
+
+// GenerateAndSaveCategories generates and saves new categories to database
+func (s *AIChallengeService) GenerateAndSaveCategories(
+	ctx context.Context,
+	count int,
+) (*GenerateCategoryResult, error) {
+	result, err := s.GenerateCategories(ctx, count)
+	if err != nil {
+		return nil, err
+	}
+
+	if !result.Success {
+		return result, nil
+	}
+
+	// Save each category to database
+	savedCategories := []models.Category{}
+	for _, cat := range result.Categories {
+		catCopy := cat
+		if err := s.categoryRepo.Create(ctx, &catCopy); err != nil {
+			// Log error but continue with others
+			continue
+		}
+		savedCategories = append(savedCategories, catCopy)
+	}
+
+	result.Categories = savedCategories
+	return result, nil
 }

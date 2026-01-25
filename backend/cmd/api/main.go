@@ -176,6 +176,7 @@ func main() {
 		admin.Post("/challenges/generate-batch", adminHandler.GenerateBatch)         // POST /admin/challenges/generate-batch
 		admin.Get("/challenges/stats", adminHandler.GetGenerationStats)              // GET /admin/challenges/stats
 		admin.Get("/ai/validate-key", adminHandler.ValidateAPIKey)                   // GET /admin/ai/validate-key
+		admin.Post("/categories/generate", adminHandler.GenerateCategories)          // POST /admin/categories/generate
 		
 		log.Println("✓ Admin routes registered")
 	}

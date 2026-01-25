@@ -209,3 +209,88 @@ func CleanJSONResponse(response string) string {
 	cleaned = strings.TrimSuffix(cleaned, "```")
 	return strings.TrimSpace(cleaned)
 }
+
+// GetCategorySystemPrompt returns the system prompt for category generation
+func (b *ChallengePromptBuilder) GetCategorySystemPrompt() string {
+	return `You are an expert content strategist for Fanmania, a skill-based gamification platform focused on African pop culture.
+
+Your role is to generate engaging category ideas that cover diverse aspects of African entertainment, music, sports, and culture.
+
+CRITICAL RULES:
+1. Categories must focus on African pop culture, entertainment, sports, or cultural topics
+2. Keep categories family-friendly (suitable for ages 13+)
+3. Avoid controversial topics (politics, religion, violence)
+4. Categories should have enough depth for multiple difficulty levels
+5. Each category needs a unique, memorable name
+
+OUTPUT FORMAT:
+Respond ONLY with valid JSON in this exact structure:
+{
+  "categories": [
+    {
+      "name": "Category Name (max 50 chars)",
+      "slug": "category-name-lowercase-dashed",
+      "description": "Brief description (max 200 chars)",
+      "icon_type": "emoji or icon name",
+      "color_primary": "#HEX",
+      "color_secondary": "#HEX"
+    }
+  ]
+}`
+}
+
+// BuildCategoryGenerationPrompt generates a prompt for category creation
+func (b *ChallengePromptBuilder) BuildCategoryGenerationPrompt(
+	existingCategories []string,
+	count int,
+) string {
+	prompt := fmt.Sprintf(`Generate %d unique category ideas for a trivia game focused on African pop culture.
+
+Categories should cover diverse topics such as:
+- African music (Afrobeats, Amapiano, Highlife, Bongo Flava, etc.)
+- Nigerian/African cinema (Nollywood, etc.)
+- African sports (football, basketball, athletics)
+- African celebrities and influencers
+- African fashion and lifestyle
+- African history and traditions
+- African food and cuisine
+- African geography and landmarks
+
+`, count)
+
+	if len(existingCategories) > 0 {
+		prompt += fmt.Sprintf(`DO NOT suggest categories similar to these existing ones:
+%s
+
+`, strings.Join(existingCategories, "\n"))
+	}
+
+	prompt += `For each category, suggest:
+- A catchy, memorable name
+- A URL-friendly slug (lowercase, hyphenated)
+- A brief description
+- An appropriate emoji icon
+- A vibrant primary color (hex)
+- A complementary secondary color (hex)
+
+Remember: Focus on African pop culture. Make categories specific enough to be interesting but broad enough to have many questions.
+
+Respond ONLY with the JSON structure specified in your system prompt.`
+
+	return prompt
+}
+
+// GeneratedCategory represents an AI-generated category
+type GeneratedCategory struct {
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	Description    string `json:"description"`
+	IconType       string `json:"icon_type"`
+	ColorPrimary   string `json:"color_primary"`
+	ColorSecondary string `json:"color_secondary"`
+}
+
+// GeneratedCategoriesResponse represents the AI response for category generation
+type GeneratedCategoriesResponse struct {
+	Categories []GeneratedCategory `json:"categories"`
+}
