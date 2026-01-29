@@ -13,6 +13,7 @@ class ChallengeProvider extends ChangeNotifier {
   List<Challenge> _challenges = [];
   int _currentChallengeIndex = 0;
   ChallengeResult? _lastResult;
+  int _sessionTargetQuestions = 10; // Fixed session length
 
   // Session statistics
   int _sessionCorrectCount = 0;
@@ -48,10 +49,21 @@ class ChallengeProvider extends ChangeNotifier {
   String? get error => _error;
   int get remainingSeconds => _remainingSeconds;
   bool get timerActive => _timerActive;
-  bool get hasMoreChallenges =>
-      _currentChallengeIndex < _challenges.length - 1;
-  int get totalChallenges => _challenges.length;
-  int get completedChallenges => _currentChallengeIndex;
+  /// Check if there are more challenges to show
+  /// Session ends when:
+  /// - User has answered target number of questions (10), OR
+  /// - No more challenges are available in the current batch
+  bool get hasMoreChallenges {
+    // Already answered enough questions
+    if (_sessionQuestionsAnswered >= _sessionTargetQuestions) {
+      return false;
+    }
+    // Check if there's another challenge in the list
+    return _currentChallengeIndex < _challenges.length - 1;
+  }
+  int get totalChallenges => _sessionTargetQuestions;
+  int get completedChallenges => _sessionQuestionsAnswered;
+  int get sessionTargetQuestions => _sessionTargetQuestions;
 
   // Session stats getters
   int get sessionCorrectCount => _sessionCorrectCount;
@@ -73,6 +85,7 @@ class ChallengeProvider extends ChangeNotifier {
     _currentChallengeIndex = 0;
     _lastResult = null;
     _error = null;
+    _sessionTargetQuestions = 10; // Fixed 10 questions per session
     // Reset session stats
     _sessionCorrectCount = 0;
     _sessionTotalPoints = 0;
@@ -83,7 +96,35 @@ class ChallengeProvider extends ChangeNotifier {
   /// Set the difficulty level
   void setDifficulty(int difficulty) {
     _selectedDifficulty = difficulty.clamp(1, 5);
+    // Prefetch challenges when difficulty changes
+    _prefetchChallenges();
     notifyListeners();
+  }
+
+  /// Prefetch challenges in background when category is viewed
+  Future<void> _prefetchChallenges() async {
+    if (_currentCategory == null || _isLoading) return;
+
+    try {
+      // Silently prefetch without affecting UI state
+      final prefetched = await _apiService.getChallenges(
+        categoryId: _currentCategory!.id,
+        difficultyTier: _selectedDifficulty,
+        limit: 10,
+      );
+      // Store prefetched challenges if not already loaded
+      if (_challenges.isEmpty && prefetched.isNotEmpty) {
+        _challenges = prefetched;
+      }
+    } catch (e) {
+      // Silently ignore prefetch errors
+      debugPrint('Prefetch failed: $e');
+    }
+  }
+
+  /// Trigger prefetch when category is selected (called from UI)
+  void triggerPrefetch() {
+    _prefetchChallenges();
   }
 
   /// Fetch challenges for the current category and difficulty
@@ -180,6 +221,7 @@ class ChallengeProvider extends ChangeNotifier {
 
     _currentChallengeIndex++;
     _lastResult = null;
+    _isSubmitting = false;
     _startTimer();
     notifyListeners();
 
@@ -239,6 +281,7 @@ class ChallengeProvider extends ChangeNotifier {
       _remainingSeconds = 60; // Default 60 seconds
       _timerActive = true;
     }
+    _isSubmitting = false;
   }
 
   /// Pause timer
@@ -262,6 +305,12 @@ class ChallengeProvider extends ChangeNotifier {
     _timerActive = false;
     _remainingSeconds = 0;
     _error = null;
+    // Reset ALL session stats to prevent stale data in next session
+    _sessionCorrectCount = 0;
+    _sessionTotalPoints = 0;
+    _sessionQuestionsAnswered = 0;
+    _sessionTargetQuestions = 10;
+    _isSubmitting = false;
     notifyListeners();
   }
 

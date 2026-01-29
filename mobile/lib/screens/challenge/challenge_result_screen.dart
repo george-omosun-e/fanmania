@@ -231,13 +231,16 @@ class _ChallengeResultScreenState extends State<ChallengeResultScreen>
 
   void _playAgain(BuildContext context) {
     if (_categoryId != null && _categoryId!.isNotEmpty) {
-      context.go('/category/$_categoryId');
+      // Go to home first, then push category for proper back-swipe support
+      context.go('/home');
+      context.push('/category/$_categoryId');
     } else {
       // Try to get category from provider as fallback
       final provider = context.read<ChallengeProvider>();
       final category = provider.currentCategory;
       if (category != null) {
-        context.go('/category/${category.id}');
+        context.go('/home');
+        context.push('/category/${category.id}');
       } else {
         context.go('/home');
       }

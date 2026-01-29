@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strings"
 	"time"
 
@@ -75,8 +76,8 @@ func (s *ChallengeService) GetChallengesForUser(
 		needed := limit - len(challenges)
 
 		// Generate a few challenges synchronously (to avoid timeout)
-		// Limit to 5 synchronous generations to keep response time reasonable
-		syncLimit := 5
+		// Limit to 3 synchronous generations to keep response time fast
+		syncLimit := 3
 		if needed < syncLimit {
 			syncLimit = needed
 		}
@@ -92,21 +93,26 @@ func (s *ChallengeService) GetChallengesForUser(
 		}
 
 		// Generate more challenges in background for future requests
-		if needed > syncLimit {
-			go func() {
-				bgCtx := context.Background()
-				for i := 0; i < needed-syncLimit; i++ {
-					s.aiChallengeService.GenerateAndSaveChallenge(
-						bgCtx, categoryID, tier, "multiple_choice",
-					)
-				}
-			}()
+		// Always generate extra to build up the pool
+		bgCount := needed - syncLimit
+		if bgCount < 5 {
+			bgCount = 5 // Generate at least 5 in background
 		}
+		go func() {
+			bgCtx := context.Background()
+			for i := 0; i < bgCount; i++ {
+				s.aiChallengeService.GenerateAndSaveChallenge(
+					bgCtx, categoryID, tier, "multiple_choice",
+				)
+			}
+		}()
 	}
 
-	// Remove correct answer hash before returning
+	// Shuffle options and remove correct answer hash before returning
 	for i := range challenges {
 		challenges[i].CorrectAnswerHash = ""
+		// Shuffle the options in question data so correct answer isn't always first
+		challenges[i].QuestionData = s.shuffleQuestionOptions(challenges[i].QuestionData)
 	}
 
 	return challenges, nil
@@ -313,4 +319,28 @@ func (s *ChallengeService) GetUserAttemptStats(ctx context.Context, userID uuid.
 		"today": todayCount,
 		"week":  weekCount,
 	}, nil
+}
+
+// shuffleQuestionOptions shuffles the options in question data JSON
+// This ensures the correct answer isn't always in the same position
+func (s *ChallengeService) shuffleQuestionOptions(questionData json.RawMessage) json.RawMessage {
+	var data models.QuestionData
+	if err := json.Unmarshal(questionData, &data); err != nil {
+		return questionData // Return original if parsing fails
+	}
+
+	// Shuffle the options
+	if len(data.Options) > 1 {
+		rand.Shuffle(len(data.Options), func(i, j int) {
+			data.Options[i], data.Options[j] = data.Options[j], data.Options[i]
+		})
+	}
+
+	// Re-marshal the shuffled data
+	shuffled, err := json.Marshal(data)
+	if err != nil {
+		return questionData // Return original if marshaling fails
+	}
+
+	return shuffled
 }

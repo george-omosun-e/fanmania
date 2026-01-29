@@ -64,13 +64,18 @@ func (s *AIChallengeService) GenerateChallenge(
 
 	// Get existing challenges to avoid duplicates (get more for better deduplication)
 	existingChallenges, _ := s.challengeRepo.GetByCategoryAndDifficulty(
-		ctx, categoryID, difficultyTier, 50,
+		ctx, categoryID, difficultyTier, 100,
 	)
 
 	existingTitles := []string{}
 	for _, ch := range existingChallenges {
-		// Include both title and a snippet of the question for better deduplication
-		existingTitles = append(existingTitles, fmt.Sprintf("- %s", ch.Title))
+		// Include title and question text for better deduplication
+		var qd models.QuestionData
+		if err := json.Unmarshal(ch.QuestionData, &qd); err == nil {
+			existingTitles = append(existingTitles, fmt.Sprintf("- %s: %s", ch.Title, qd.Question))
+		} else {
+			existingTitles = append(existingTitles, fmt.Sprintf("- %s", ch.Title))
+		}
 	}
 
 	// Build prompt based on challenge type
@@ -187,6 +192,13 @@ func (s *AIChallengeService) GenerateAndSaveChallenge(
 		return result, nil
 	}
 
+	// Check for duplicate content before saving
+	if s.isDuplicateQuestion(ctx, categoryID, result.Challenge.QuestionData) {
+		result.Success = false
+		result.Error = "Generated question is too similar to existing questions"
+		return result, nil
+	}
+
 	// Save to database
 	if err := s.challengeRepo.Create(ctx, result.Challenge); err != nil {
 		result.Success = false
@@ -195,6 +207,46 @@ func (s *AIChallengeService) GenerateAndSaveChallenge(
 	}
 
 	return result, nil
+}
+
+// isDuplicateQuestion checks if a similar question already exists
+func (s *AIChallengeService) isDuplicateQuestion(ctx context.Context, categoryID uuid.UUID, questionData json.RawMessage) bool {
+	// Parse the question
+	var newQD models.QuestionData
+	if err := json.Unmarshal(questionData, &newQD); err != nil {
+		return false
+	}
+
+	// Create a normalized hash of the question
+	newHash := s.hashQuestion(newQD.Question)
+
+	// Get existing challenges
+	existingChallenges, err := s.challengeRepo.GetByCategoryAndDifficulty(ctx, categoryID, 0, 200)
+	if err != nil {
+		return false
+	}
+
+	// Check for duplicates
+	for _, ch := range existingChallenges {
+		var existingQD models.QuestionData
+		if err := json.Unmarshal(ch.QuestionData, &existingQD); err != nil {
+			continue
+		}
+		if s.hashQuestion(existingQD.Question) == newHash {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hashQuestion creates a normalized hash for question comparison
+func (s *AIChallengeService) hashQuestion(question string) string {
+	// Normalize: lowercase, remove extra spaces, trim
+	normalized := strings.ToLower(strings.TrimSpace(question))
+	normalized = strings.Join(strings.Fields(normalized), " ")
+	hash := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(hash[:])
 }
 
 // GenerateBatch generates multiple challenges at once

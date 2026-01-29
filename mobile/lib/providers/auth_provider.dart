@@ -8,6 +8,7 @@ class AuthProvider with ChangeNotifier {
   User? _currentUser;
   UserStats? _userStats;
   bool _isLoading = false;
+  bool _isInitialized = false; // Track if initial auth check is done
   String? _error;
 
   AuthProvider(this._apiService) {
@@ -19,6 +20,7 @@ class AuthProvider with ChangeNotifier {
   UserStats? get userStats => _userStats;
   bool get isAuthenticated => _currentUser != null;
   bool get isLoading => _isLoading;
+  bool get isInitialized => _isInitialized; // Has initial auth check completed?
   String? get error => _error;
 
   // Check if user is logged in on app start
@@ -27,12 +29,14 @@ class AuthProvider with ChangeNotifier {
       try {
         _currentUser = await _apiService.getCurrentUser();
         await _fetchUserStats();
-        notifyListeners();
       } catch (e) {
-        // Token might be expired, logout
-        await logout();
+        // Token might be expired, clear tokens silently
+        await _apiService.clearTokens();
+        _currentUser = null;
       }
     }
+    _isInitialized = true;
+    notifyListeners();
   }
 
   // Fetch user stats

@@ -22,7 +22,9 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   String? _selectedAnswer;
   bool _showingFeedback = false;
   bool? _lastAnswerCorrect;
-  bool _navigatedToResult = false; // Prevent double navigation
+  bool _navigatedToResult = false;
+  bool _isProcessing = false;
+  bool _submitButtonReady = false; // Button appears after first tick
   late AnimationController _shakeController;
   late Animation<double> _shakeAnimation;
 
@@ -43,17 +45,24 @@ class _ChallengeScreenState extends State<ChallengeScreen>
 
   @override
   void dispose() {
+    _navigatedToResult = true; // Prevent any pending callbacks
     _timer?.cancel();
+    _timer = null;
     _shakeController.dispose();
     super.dispose();
   }
 
   void _startTimer() {
     _timer?.cancel();
+    if (_navigatedToResult) return;
+
+    // Reset button ready state for new question
+    _submitButtonReady = false;
+
     final provider = context.read<ChallengeProvider>();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted || _showingFeedback) {
+      if (!mounted || _showingFeedback || _navigatedToResult) {
         timer.cancel();
         return;
       }
@@ -61,10 +70,15 @@ class _ChallengeScreenState extends State<ChallengeScreen>
       final currentSeconds = provider.remainingSeconds;
       if (currentSeconds > 1) {
         provider.updateTimer(currentSeconds - 1);
+        // Enable submit button after first tick
+        if (!_submitButtonReady) {
+          setState(() {
+            _submitButtonReady = true;
+          });
+        }
       } else if (currentSeconds == 1) {
         provider.updateTimer(0);
-      } else if (currentSeconds <= 0 && !_showingFeedback) {
-        // Time's up!
+      } else if (currentSeconds <= 0 && !_showingFeedback && !_navigatedToResult) {
         timer.cancel();
         _onTimeUp();
       }
@@ -92,7 +106,7 @@ class _ChallengeScreenState extends State<ChallengeScreen>
       // Ignore errors, continue anyway
     });
 
-    await Future.delayed(const Duration(milliseconds: 1500));
+    await Future.delayed(const Duration(milliseconds: 2000));
 
     if (!mounted || _navigatedToResult) return;
 
@@ -107,8 +121,10 @@ class _ChallengeScreenState extends State<ChallengeScreen>
       _startTimer();
     } else {
       // No more challenges - go to final result
+      _timer?.cancel();
       _navigatedToResult = true;
       context.go('/challenge/result');
+      return; // Explicit return after navigation
     }
   }
 
@@ -121,41 +137,67 @@ class _ChallengeScreenState extends State<ChallengeScreen>
   }
 
   Future<void> _submitAnswer() async {
-    if (_selectedAnswer == null || _showingFeedback || _navigatedToResult) return;
+    // Guard against rapid taps and invalid states
+    if (_selectedAnswer == null ||
+        _showingFeedback ||
+        _navigatedToResult ||
+        _isProcessing) {
+      return;
+    }
+
+    // Set local processing flag immediately
+    setState(() {
+      _isProcessing = true;
+    });
 
     final provider = context.read<ChallengeProvider>();
     _timer?.cancel();
+    final answer = _selectedAnswer!;
 
-    final success = await provider.submitAnswer(_selectedAnswer!);
-
-    if (success && mounted && !_navigatedToResult) {
-      final result = provider.lastResult;
-      _lastAnswerCorrect = result?.isCorrect ?? false;
-
-      // Show feedback briefly
-      setState(() {
-        _showingFeedback = true;
-      });
-
-      // Wait for feedback animation, then advance
-      await Future.delayed(const Duration(milliseconds: 1200));
+    try {
+      final success = await provider.submitAnswer(answer);
 
       if (!mounted || _navigatedToResult) return;
 
-      // Check if there are more challenges
-      if (provider.hasMoreChallenges) {
-        // Move to next question
-        provider.nextChallenge();
+      if (success) {
+        final result = provider.lastResult;
+        _lastAnswerCorrect = result?.isCorrect ?? false;
+
         setState(() {
-          _selectedAnswer = null;
-          _showingFeedback = false;
-          _lastAnswerCorrect = null;
+          _showingFeedback = true;
+        });
+
+        // Show feedback for 2 seconds so user can see result
+        await Future.delayed(const Duration(milliseconds: 2000));
+
+        if (!mounted || _navigatedToResult) return;
+
+        if (provider.hasMoreChallenges) {
+          provider.nextChallenge();
+          setState(() {
+            _selectedAnswer = null;
+            _showingFeedback = false;
+            _lastAnswerCorrect = null;
+            _isProcessing = false;
+            _submitButtonReady = false;
+          });
+          _startTimer();
+        } else {
+          _navigatedToResult = true;
+          context.go('/challenge/result');
+        }
+      } else {
+        setState(() {
+          _isProcessing = false;
         });
         _startTimer();
-      } else {
-        // No more challenges - go to final result
-        _navigatedToResult = true;
-        context.go('/challenge/result');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+        _startTimer();
       }
     }
   }
@@ -218,8 +260,8 @@ class _ChallengeScreenState extends State<ChallengeScreen>
                     children: [
                       // Header
                       _ChallengeHeader(
-                        currentIndex: provider.currentChallengeIndex + 1,
-                        totalCount: provider.totalChallenges,
+                        currentIndex: provider.sessionQuestionsAnswered + 1,
+                        totalCount: provider.sessionTargetQuestions,
                         remainingSeconds: provider.remainingSeconds,
                         totalSeconds: challenge.timeLimitSeconds ?? 60,
                         difficulty: challenge.difficultyTier,
@@ -241,14 +283,14 @@ class _ChallengeScreenState extends State<ChallengeScreen>
 
                               const SizedBox(height: 24),
 
-                              // Answer options
+                              // Answer options - disabled while submitting or showing feedback
                               ...challenge.questionData.options.map(
                                 (option) => Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
                                   child: _AnswerOption(
                                     option: option,
                                     isSelected: _selectedAnswer == option.id,
-                                    isDisabled: _showingFeedback,
+                                    isDisabled: _showingFeedback || provider.isSubmitting,
                                     onTap: () => _selectAnswer(option.id),
                                   ),
                                 ),
@@ -258,11 +300,25 @@ class _ChallengeScreenState extends State<ChallengeScreen>
                         ),
                       ),
 
-                      // Submit button
-                      _SubmitSection(
-                        isEnabled: _selectedAnswer != null && !_showingFeedback,
-                        isLoading: provider.isSubmitting,
-                        onSubmit: _submitAnswer,
+                      // Submit button - animates in after first timer tick
+                      AnimatedOpacity(
+                        opacity: _submitButtonReady ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 300),
+                        child: AnimatedSlide(
+                          offset: _submitButtonReady
+                              ? Offset.zero
+                              : const Offset(0, 0.5),
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                          child: _SubmitSection(
+                            isEnabled: _selectedAnswer != null &&
+                                       !_showingFeedback &&
+                                       !_isProcessing &&
+                                       _submitButtonReady,
+                            isLoading: _isProcessing,
+                            onSubmit: _submitAnswer,
+                          ),
+                        ),
                       ),
                     ],
                   ),

@@ -23,13 +23,50 @@ class CategoryDetailScreen extends StatefulWidget {
 }
 
 class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
+  final ScrollController _scrollController = ScrollController();
+  bool _showTitleInAppBar = false;
+
+  // Threshold for when to show title (roughly when header is collapsed)
+  static const double _titleShowThreshold = 120.0;
+
   @override
   void initState() {
     super.initState();
-    // Initialize challenge session
+    _scrollController.addListener(_onScroll);
+
+    // Initialize challenge session and trigger prefetch
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ChallengeProvider>().startSession(widget.category);
+      final provider = context.read<ChallengeProvider>();
+      provider.startSession(widget.category);
+      // Start prefetching challenges immediately
+      provider.triggerPrefetch();
     });
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    final shouldShow = _scrollController.offset > _titleShowThreshold;
+    if (shouldShow != _showTitleInAppBar) {
+      setState(() {
+        _showTitleInAppBar = shouldShow;
+      });
+    }
+  }
+
+  void _goBack() {
+    // Check if we can pop (has navigation history)
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      // No history (came from Play Again which uses go()), navigate to home
+      context.go('/home');
+    }
   }
 
   @override
@@ -38,6 +75,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
 
     return Scaffold(
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           // Custom App Bar with category header
           SliverAppBar(
@@ -45,7 +83,7 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
             pinned: true,
             backgroundColor: AppColors.deepSpace,
             leading: IconButton(
-              onPressed: () => context.pop(),
+              onPressed: _goBack,
               icon: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -56,6 +94,17 @@ class _CategoryDetailScreenState extends State<CategoryDetailScreen> {
                   Icons.arrow_back,
                   color: AppColors.textPrimary,
                 ),
+              ),
+            ),
+            // Show title in app bar when scrolled
+            title: AnimatedOpacity(
+              opacity: _showTitleInAppBar ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: Text(
+                widget.category.name,
+                style: AppTypography.labelLarge,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             flexibleSpace: FlexibleSpaceBar(
